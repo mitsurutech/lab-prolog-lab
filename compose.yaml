@@ -1,0 +1,97 @@
+# Logic programming with SWI-Prolog: a program is facts and rules, and you run it by asking
+# questions. The interpreter and three small files to read and change are in your own copy.
+#
+# Your copy is the only thing you may use, and it is the only thing you can reach: this lab
+# has no way out to the internet, so nothing you try can touch anybody else's machine, and
+# no extra Prolog packages can be installed. It has no web page, so use the lab's terminal.
+# It reaches the interpreter with docker exec, for example
+#   docker exec -it prolog swipl -q family.pl
+# which opens the interactive prompt with the family rules loaded (leave it with halt.), or
+#   docker exec prolog swipl -q -g "forall(parent(tom, X), (write(X), nl))" -t halt family.pl
+# which asks one question, prints every answer and stops.
+#
+# The work folder is /tmp. The first start writes facts.pl (who is whose parent),
+# family.pl (rules built on those facts) and lists.pl (rules over lists). Everything they
+# print is in English. Your changes are kept when the lab is stopped and started again, and
+# a file you delete is written again the next time the lab starts.
+#
+# Hand in the questions you asked and what each answered, a rule of your own added to
+# family.pl and the question that shows it working, and a sentence on how a Prolog fact
+# differs from a rule.
+
+services:
+  prolog:
+    image: swipl:9.2.9
+    # An unprivileged account: the runner gives it no capabilities at all. The volume is
+    # mounted on /tmp because that is the one folder in the image it may write to.
+    user: "65532"
+    working_dir: /tmp
+    environment:
+      HOME: /tmp
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cd /tmp
+        [ -f facts.pl ] || cat > facts.pl <<'PL'
+        % facts.pl: a fact is something we say is true.
+        % Read parent(tom, ann) as "tom is a parent of ann".
+        parent(tom, ann).
+        parent(tom, ben).
+        parent(ann, cat).
+        parent(ben, dan).
+        parent(ben, eve).
+
+        colour(red).
+        colour(green).
+        colour(blue).
+        PL
+        [ -f family.pl ] || cat > family.pl <<'PL'
+        % family.pl: rules built on the facts in facts.pl.
+        % A rule says "the head is true if the body is true". A comma means "and".
+        :- ensure_loaded(facts).
+
+        grandparent(X, Z) :- parent(X, Y), parent(Y, Z).
+
+        sibling(X, Y) :- parent(P, X), parent(P, Y), X \= Y.
+
+        % A rule that uses itself: an ancestor is a parent, or a parent of an ancestor.
+        ancestor(X, Y) :- parent(X, Y).
+        ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+        PL
+        [ -f lists.pl ] || cat > lists.pl <<'PL'
+        % lists.pl: a list is [first, second, ...] and [H|T] splits it into a head and a tail.
+
+        % total(List, Sum): the sum of a list of numbers.
+        total([], 0).
+        total([H|T], Sum) :- total(T, Rest), Sum is Rest + H.
+
+        % last_of(List, X): X is the last item.
+        last_of([X], X).
+        last_of([_|T], X) :- last_of(T, X).
+
+        % double(List, Doubled): every number doubled.
+        double([], []).
+        double([H|T], [D|DT]) :- D is H * 2, double(T, DT).
+        PL
+        trap 'exit 0' TERM INT
+        while true; do sleep 1; done
+    volumes:
+      - prolog:/tmp
+    # Healthy means the last file is written and the interpreter runs, so the first press of
+    # Open terminal finds them. It does not load the student's own files, so a typing mistake
+    # saved in one can never make the lab look broken.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/lists.pl && swipl --version"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    labels:
+      lab.title: SWI-Prolog
+
+volumes:
+  prolog:
